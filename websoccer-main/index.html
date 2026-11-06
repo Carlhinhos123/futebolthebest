@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corinthians FC</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#111111">
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="game" width="900" height="620" tabindex="0"></canvas>
+
+    <!-- On-screen Controls Overlay (Chutar, Trocar e Direcional) -->
+    <div id="touch" class="touchOverlay hidden">
+      <div id="touchStick" class="touchStick" title="Direcional Analógico (Arraste para mover)">
+        <div id="touchKnob" class="touchKnob"></div>
+      </div>
+
+      <div class="touchTopNav">
+        <button id="btnPause" type="button" class="hudNavBtn" title="Pausar Partida">⏸ PAUSA</button>
+        <button id="btnTouchToggle" type="button" class="hudNavBtn" title="Alternar Botões na Tela">🎮 BOTÕES: ON</button>
+      </div>
+
+      <div class="touchActions">
+        <button id="touchSwap" type="button" class="touchBtn touchBtnSwap" title="Trocar Jogador / Arrancada [Q]">
+          <div class="touchBtnGlow"></div>
+          <span class="touchBtnIcon">🔄</span>
+          <span class="touchBtnLabel">TROCAR</span>
+          <span class="touchBtnSub">DRIBLE / TROCA</span>
+          <span class="touchBtnKbd">[Q]</span>
+        </button>
+
+        <button id="touchKick" type="button" class="touchBtn touchBtnKick" title="Chutar / Passar / Desarme [ESPAÇO]">
+          <div class="touchBtnGlow"></div>
+          <span class="touchBtnIcon">⚽</span>
+          <span class="touchBtnLabel">CHUTAR</span>
+          <span class="touchBtnSub">CHUTE / PASSE</span>
+          <span class="touchBtnKbd">[ESPAÇO]</span>
+          <div class="touchChargeWrap">
+            <div id="touchChargeBar" class="touchChargeBar"></div>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <div id="menu" class="overlay">
+      <div class="panel">
+        <div class="topConsoleBar">
+          <span class="consoleBadge">PRO CONSOLE EDITION</span>
+          <button id="hudToggleBtn" type="button" class="hudToggleBtn" title="Ativar ou ocultar botões na tela">🎮 BOTÕES NA TELA: LIGADO</button>
+          <button id="fsBtn" type="button" class="fsBtn" title="Alternar Tela Cheia">⛶ TELA CHEIA</button>
+        </div>
+        <h1 class="consoleTitle">WEB<span>SOCCER</span> <span class="proTag">PRO</span></h1>
+        <p class="tag">Console Football Experience • Next-Gen Arcade</p>
+
+        <!-- Console Team Selection Section -->
+        <div class="teamSelectSection" id="teamSelectSection">
+          <div class="teamCard" id="teamCard0">
+            <div class="teamCardHeader">
+              <span class="teamRoleTag">TIME 1 (CASA)</span>
+              <span class="teamRating" id="teamRating0">OVR 85</span>
+            </div>
+            <div class="teamCardBody">
+              <button type="button" class="teamNavBtn" id="prevTeam0" title="Time anterior">◀</button>
+              <div class="teamInfo">
+                <div class="teamKitPreview" id="teamKit0"></div>
+                <div class="teamTextWrap">
+                  <span class="teamName" id="teamName0">Corinthians</span>
+                  <span class="teamShort" id="teamShort0">COR</span>
+                </div>
+              </div>
+              <button type="button" class="teamNavBtn" id="nextTeam0" title="Próximo time">▶</button>
+            </div>
+          </div>
+
+          <div class="teamVersus">VS</div>
+
+          <div class="teamCard" id="teamCard1">
+            <div class="teamCardHeader">
+              <span class="teamRoleTag" id="teamRole1">TIME 2 (VISITANTE)</span>
+              <span class="teamRating" id="teamRating1">OVR 86</span>
+            </div>
+            <div class="teamCardBody">
+              <button type="button" class="teamNavBtn" id="prevTeam1" title="Time anterior">◀</button>
+              <div class="teamInfo">
+                <div class="teamKitPreview" id="teamKit1"></div>
+                <div class="teamTextWrap">
+                  <span class="teamName" id="teamName1">Palmeiras</span>
+                  <span class="teamShort" id="teamShort1">PAL</span>
+                </div>
+              </div>
+              <button type="button" class="teamNavBtn" id="nextTeam1" title="Próximo time">▶</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>Mode</label>
+          <div class="btns">
+            <button data-mode="1" class="active">1 player</button>
+            <button data-mode="2">2 players</button>
+            <button data-mode="online">Online</button>
+          </div>
+        </div>
+
+        <div class="row" id="difficultyRow">
+          <label>CPU skill</label>
+          <div class="btns">
+            <button data-difficulty="easy">Easy</button>
+            <button data-difficulty="normal" class="active">Normal</button>
+            <button data-difficulty="hard">Hard</button>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>Sound</label>
+          <div class="btns">
+            <button data-music="on" class="active">On</button>
+            <button data-music="off">Off</button>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>Commentary</label>
+          <div class="btns">
+            <button data-commentary="on" class="active">On</button>
+            <button data-commentary="off">Off</button>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>Offside</label>
+          <div class="btns">
+            <button data-offside="on" class="active">On</button>
+            <button data-offside="off">Off</button>
+          </div>
+        </div>
+
+        <div class="row">
+          <label for="duration">Match length</label>
+          <select id="duration">
+            <option value="60">Short (2 &times; 1 min)</option>
+            <option value="120" selected>Normal (2 &times; 2 min)</option>
+            <option value="240">Long (2 &times; 4 min)</option>
+          </select>
+        </div>
+
+        <details id="controlsBox">
+        <summary>Controls</summary>
+        <table class="keys" id="keysTable">
+          <thead>
+            <tr><th></th><th id="p1head">Player 1 (Corinthians)</th><th id="p2head">Player 2 (Rival)</th></tr>
+          </thead>
+          <tbody id="keysBody"></tbody>
+          <tfoot>
+            <tr>
+              <td>Presets</td>
+              <td><select data-preset="0" class="preset"></select></td>
+              <td><select data-preset="1" class="preset"></select></td>
+            </tr>
+          </tfoot>
+        </table>
+        <p id="bindHint" class="status">Click a key to change it.</p>
+        </details>
+
+        <details id="lineupBox">
+          <summary>Line-up <span id="lineupShape" class="shape">4-3-3</span></summary>
+          <div class="row" id="lineupTeamRow">
+            <label>Team</label>
+            <div class="btns">
+              <button data-lineupteam="0" class="active">Corinthians</button>
+              <button data-lineupteam="1">Rival</button>
+            </div>
+          </div>
+          <div class="btns wrap" id="lineupPresets"></div>
+          <div class="pitchWrap">
+            <canvas id="lineupPitch" width="220" height="300"></canvas>
+          </div>
+          <p id="lineupNote" class="status"></p>
+          <p class="fineprint">
+            Drag anyone but the keeper. How far up the pitch you put a player is
+            what decides how he plays: push a midfielder forward and he stops
+            tracking back and starts hanging off the strikers.
+          </p>
+        </details>
+
+        <details id="scoresBox">
+          <summary>High scores <span id="scoresLevel" class="shape"></span></summary>
+          <table class="scores">
+            <tbody id="scoresBody"></tbody>
+          </table>
+          <p id="scoresNote" class="fineprint"></p>
+        </details>
+
+        <p id="iosHint" class="fineprint hidden"></p>
+
+        <div id="localSetup">
+
+          <details>
+          <summary>Como Jogar / Controles Dinâmicos</summary>
+          <ul class="hints">
+            <li><b>Botão ⚽ CHUTAR [Espaço]:</b> Toque rápido para passe rasteiro; segure para carregar a força do chute a gol ou passe longo. Sem a bola: carrinho/desarme defensivo.</li>
+            <li><b>Botão 🔄 TROCAR [Q]:</b> Sem a bola: troca inteligente para o melhor defensor cobrindo a jogada. Com a bola: ativa uma <b>Arrancada Dinâmica (Drible em Velocidade)</b> para superar a marcação!</li>
+            <li><b>Efeito no Chute (Aftertouch):</b> continue apontando a direção após chutar para colocar curva na bola e tirar do alcance do goleiro!</li>
+            <li><b>Controles na tela e Teclado:</b> você pode clicar/tocar nos botões ⚽ CHUTAR e 🔄 TROCAR na tela ou usar os atalhos do teclado e joystick!</li>
+            <li>Controles USB / Bluetooth são suportados (LB/RB troca de jogador, A/X chuta).</li>
+            <li><b>Esc</b> ou botão <b>PAUSA</b> pausa a partida.</li>
+          </ul>
+          </details>
+
+        </div>
+
+        <div id="onlineSetup" class="hidden">
+          <p class="explain">
+            One player opens a match and passes on the code; the other enters it.
+            Whoever opens the match plays <b>Corinthians</b>, the second player <b>Rival</b>.
+            You control your own team with either set of keys from the table above.
+          </p>
+
+          <div id="roomCode" class="code hidden"></div>
+          <p id="onlineStatus" class="status"></p>
+
+          <div class="joinrow">
+            <input id="joinCode" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false">
+            <button id="join">JOIN</button>
+          </div>
+
+          <p class="fineprint">
+            Works between two browser tabs, between computers on the same network,
+            and across the internet once you host <code>server/relay.js</code> somewhere.
+          </p>
+        </div>
+        <div class="panelFooter">
+          <button id="start" class="primary">▶ KICK OFF</button>
+          <button id="host" class="primary hidden">OPEN A NEW MATCH</button>
+        </div>
+
+        <div class="consoleBar">
+          <span class="prompt"><kbd class="btn-a">A</kbd> / <kbd>Enter</kbd> Confirmar</span>
+          <span class="prompt"><kbd class="btn-b">B</kbd> / <kbd>Esc</kbd> Voltar</span>
+          <span class="prompt"><kbd class="btn-lb">LB</kbd><kbd class="btn-rb">RB</kbd> Trocar Time</span>
+          <span class="prompt"><kbd class="btn-start">Start</kbd> Pausar</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="hiscore" class="overlay hidden">
+      <div class="panel small">
+        <h2>HIGH SCORE</h2>
+        <p id="hiscoreLine" class="status"></p>
+        <div class="picker">
+          <div id="hiscoreUp" class="letterRow"></div>
+          <div id="hiscoreLetters" class="letters"></div>
+          <div id="hiscoreDown" class="letterRow"></div>
+        </div>
+        <button id="hiscoreOk" class="primary">OK</button>
+        <p class="fineprint">
+          Tap the arrows, or use the stick: up and down for the letter, left
+          and right to move along, kick to confirm. Typing works too.
+        </p>
+      </div>
+    </div>
+
+    <div id="pause" class="overlay hidden">
+      <div class="panel small">
+        <h2>PAUSED</h2>
+        <button id="resume" class="primary">Resume</button>
+        <button id="quit">Back to menu</button>
+      </div>
+    </div>
+
+    <div id="netend" class="overlay hidden">
+      <div class="panel small">
+        <h2 id="netendTitle">CONNECTION LOST</h2>
+        <p id="netendText" class="status"></p>
+        <button id="netendQuit" class="primary">Back to menu</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

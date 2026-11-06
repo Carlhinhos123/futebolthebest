@@ -1,0 +1,525 @@
+// All world units are "pixels" at zoom 1. The pitch is portrait, like the
+// 16-bit classics; the camera scrolls along with the ball.
+
+export const TICK_RATE = 60;
+
+/** Seconds of real time per tick. The game loop paces itself by this. */
+export const FRAME_TIME = 1 / TICK_RATE;
+
+/**
+ * One knob for the overall speed of the game. Below 1 everything happens more
+ * slowly without anything moving differently: the pitch, the shooting ranges and
+ * the timings in ticks all stay exactly where they were, only the clock the
+ * physics runs on is turned down. Friction and damping are per tick, so they are
+ * raised to the same power to keep passes travelling just as far.
+ */
+export const PACE = 0.9;
+
+/** Seconds of game time per tick. Everything in the simulation integrates by this. */
+export const DT = PACE / TICK_RATE;
+
+export const FIELD_W = 640;
+export const FIELD_H = 1000;
+export const OUT_MARGIN = 80; // grass outside the lines
+
+export const WORLD_W = FIELD_W + OUT_MARGIN * 2;
+export const WORLD_H = FIELD_H + OUT_MARGIN * 2;
+
+export const FIELD = {
+  left: OUT_MARGIN,
+  top: OUT_MARGIN,
+  right: OUT_MARGIN + FIELD_W,
+  bottom: OUT_MARGIN + FIELD_H,
+  cx: OUT_MARGIN + FIELD_W / 2,
+  cy: OUT_MARGIN + FIELD_H / 2,
+};
+
+// Pitch markings
+export const GOAL_W = 146;
+export const GOAL_DEPTH = 34;
+export const CROSSBAR_H = 46; // balls higher than this go over the bar
+export const PEN_W = 340;
+export const PEN_D = 150;
+export const SIX_W = 176;
+export const SIX_D = 58;
+export const PEN_SPOT = 100;
+export const CENTER_R = 95;
+export const ARC_R = 90;
+export const CORNER_R = 14;
+
+// Player
+export const PLAYER_R = 7;
+export const PLAYER_ACC = 1500;
+export const PLAYER_SPEED = 176;
+export const PLAYER_SPEED_BALL = 158; // slightly slower with the ball at your feet
+export const KEEPER_SPEED = 168;
+export const PLAYER_DAMP = 0.80 ** PACE;
+
+// A slide used to cover 55px - four player widths - and cost you 0.8 seconds
+// whether it connected or not, which made it a gamble rather than a tackle.
+// It now reaches about 90px and you are back on your feet sooner.
+export const SLIDE_TICKS = 28;
+export const SLIDE_SPEED = 380;
+export const SLIDE_DECAY = 0.955;
+export const SLIDE_COOLDOWN = 14;
+/** How near the ball a sliding boot has to come. */
+export const SLIDE_REACH = 11;
+export const DOWN_TICKS = 46;
+
+// Ball
+export const BALL_R = 4;
+export const GRAVITY = 980;
+// Per tick, and raised to PACE so slowing the game does not also change how far
+// a ball travels. These used to be 0.9855 and 0.9985, which let a full power
+// shot roll 88% of the length of the pitch and a lob cross 93% of it in under
+// two seconds - the ball behaved as if the grass were ice. Now a full shot
+// covers a little over half the pitch and a lob about the same.
+export const GROUND_FRICTION = 0.9855 ** PACE;
+export const AIR_DRAG = 0.9985 ** PACE;
+
+// Rolling resistance: a flat amount of speed lost per second, on top of the
+// proportional friction above. The proportional term alone barely touches a
+// slow ball, which is why a gentle pass used to trickle on for six seconds.
+// This kills the long tail without changing how a firmly struck ball starts.
+export const ROLL_DRAG = 130;
+export const BOUNCE_Z = 0.56;
+export const BOUNCE_XY = 0.86;
+export const SPIN_DECAY = 0.985 ** PACE;
+
+// Ball control
+export const CONTROL_R = 15;
+export const KEEPER_CONTROL_R = 22;
+export const CONTROL_Z = 26;
+export const KEEPER_CONTROL_Z = 52;
+export const DRIBBLE_DIST = 13;
+export const DRIBBLE_LERP = 1 - (1 - 0.30) ** PACE;
+
+// Kicking.
+//
+// Power is expressed as the distance the ball should travel, not as a speed.
+// A rolling ball loses a fixed fraction of its speed per tick, so distance is
+// speed * DT / (1 - friction): change the friction and every kick in the game
+// silently changes length. That is exactly what happened when the ball was made
+// heavier - passes fell short of their target, attacks died in midfield and the
+// scoreline went to nil. Ask for a distance and the friction can be tuned for
+// feel without touching the balance.
+export const CHARGE_MAX = 30; // ticks (0.5s) to reach full power
+export const KICK_MIN_DIST = 367; // a tap
+export const KICK_MAX_DIST = 896; // a full blooded shot
+export const LOB_CHARGE = 9; // from this charge on, the ball leaves the ground
+export const LOB_MAX = 320;
+
+// Power and height come off the same button, so the hardest shot was also the
+// highest one - and from the edge of the area a full charge simply sailed over.
+// Measured through the real button path, aiming at a corner: holding for 0.42s
+// scored 48% of the time and holding the full 0.50s scored 5%, with 43% of those
+// going out for a goal kick. Holding the button all the way was punished, and
+// the only warning was a small bar turning red.
+//
+// A shot on goal now climbs no higher than a three quarter charge already did,
+// which leaves the curve reading 0, 11, 5, 16, 32, 38, 48, 43 percent from a tap
+// to a full charge: the collapse at the end is gone and the peak is untouched.
+// Capping harder does not pay - at 160 the ball stays down but beats the keeper
+// less often, and the peak drops to 38%. Lofted balls are left alone: this only
+// applies when you are close enough to be shooting and aiming between the posts.
+export const SHOT_LIFT_MAX = 240;
+export const SHOT_FLAT_RANGE = 300; // beyond this you are hitting it long, not shooting
+export const KICK_COOLDOWN = 16;
+
+// What the commentator considers worth mentioning. A ball slower than this was
+// passed back, not saved; a run shorter than this is just carrying it forward.
+export const SAVE_SPEED = 380;
+export const RUN_ADVANCE = 0.3; // three tenths of the pitch, with the ball
+
+/** Launch speed for a ball that should come to rest after `dist` pixels. */
+export function speedForDistance(dist) {
+  return (dist * (1 - GROUND_FRICTION)) / DT;
+}
+
+// Aftertouch: bending the ball after you have kicked it
+export const AFTERTOUCH_TICKS = 70;
+export const AT_SIDE = 700; // sideways acceleration -> curve
+export const AT_LIFT = 340; // forward/backward -> lift or dip
+
+// Match
+export const GOAL_CELEBRATION_TICKS = 150;
+export const KICKOFF_TICKS = 50;
+export const RESTART_TICKS = 36;
+export const HALFTIME_TICKS = 150;
+
+// A restart is protected until the taker touches it; this is only the backstop
+// that stops an untaken restart lasting forever.
+export const PROTECT_TICKS = 260;
+
+// How long your own choice of player stands before the automatic switch takes
+// over again. Long enough to run somewhere with him, short enough that you are
+// never stuck with the wrong man.
+export const MANUAL_HOLD_TICKS = 100;
+
+// A keeper's hold is topped up every tick he actually has the ball, so this is
+// just how long the opposition keeps its distance after he lets go of it. Keep
+// it short: an early version protected him for four seconds after every routine
+// catch, which locked strikers out of every rebound and cost about nine out of
+// ten goals in the match.
+export const KEEPER_HOLD_TICKS = 40;
+
+// ...and the six second rule, roughly: hang on to it longer than this and the
+// opposition is allowed to close in again. Without it a keeper could stand on
+// the ball untouchable for the whole match.
+export const KEEPER_HOLD_MAX = 330;
+
+// CPU difficulty. HARD is the original behaviour and is deliberately left at the
+// neutral values (no delay, no error, multiplier 1), so picking it reproduces the
+// game exactly as it played before difficulties existed.
+//
+// These only ever apply to a CPU team. Your own AI team-mates always play at full
+// strength - weakening them would make the game harder for you, not easier.
+//
+// Tuned by playing each level against HARD. The yardstick is territory - the
+// share of playing time the ball spends in the opponent's half - because goals
+// are far too rare to measure with: HARD ~49%, NORMAL ~38%, EASY ~30%.
+// tools/simtest.js keeps an eye on it.
+//
+// slideChance was halved when slides themselves were made to reach further and
+// connect more often: the same frequency then meant being robbed constantly.
+// Halved a second time after measuring where an attacking run actually dies: of
+// sixty runs from the halfway line straight at goal, fifty-eight ended in a slide
+// and none in the back four. The wall was never the problem. See TEAMMATE_SLIDE
+// in game/ai.js - only the opponent was slowed down, not your own side.
+//
+// reactTicks is by far the strongest lever: a team that chases where the ball was
+// three ticks ago barely wins possession back. Everything else is comparatively
+// mild on its own, but shapes how the level feels to play against - a slower
+// opponent you can outrun, sloppier passes you can intercept, fewer slide
+// tackles taking the ball off your feet.
+export const AI_LEVELS = {
+  easy: {
+    key: 'easy',
+    label: 'EASY',
+    reactTicks: 7,
+    aimError: 40,
+    passError: 20,
+    settleTicks: 18,
+    shootRange: 220,
+    pressure: 42,
+    speed: 0.93,
+    slideChance: 0.1,
+  },
+  normal: {
+    key: 'normal',
+    label: 'NORMAL',
+    reactTicks: 4,
+    aimError: 15,
+    passError: 5,
+    settleTicks: 15,
+    shootRange: 250,
+    pressure: 50,
+    speed: 0.98,
+    slideChance: 0.22,
+  },
+  hard: {
+    key: 'hard',
+    label: 'HARD',
+    reactTicks: 0,
+    aimError: 0,
+    passError: 0,
+    settleTicks: 14,
+    shootRange: 265,
+    pressure: 52,
+    speed: 1,
+    slideChance: 0.35,
+  },
+};
+
+export const BTN = { UP: 1, DOWN: 2, LEFT: 4, RIGHT: 8, FIRE: 16, SWITCH: 32 };
+
+export const ALL_TEAMS = [
+  {
+    id: 'corinthians',
+    name: 'Corinthians',
+    short: 'COR',
+    shirt: '#f5f5f5',
+    shorts: '#111111',
+    trim: '#111111',
+    keeper: { shirt: '#ffd700', shorts: '#111111', trim: '#111111' },
+    ratings: { att: 85, mid: 84, def: 83 },
+    players: [
+      'Hugo Souza',
+      'Matheuzinho',
+      'André Ramalho',
+      'Gustavo Henrique',
+      'Fabrizio Angileri',
+      'Raniele',
+      'Breno Bidon',
+      'Rodrigo Garro',
+      'Romero',
+      'Yuri Alberto',
+      'Memphis Depay',
+    ],
+  },
+  {
+    id: 'palmeiras',
+    name: 'Palmeiras',
+    short: 'PAL',
+    shirt: '#006437',
+    shorts: '#f5f5f5',
+    trim: '#ffffff',
+    keeper: { shirt: '#00e5ff', shorts: '#111111', trim: '#ffffff' },
+    ratings: { att: 86, mid: 85, def: 85 },
+    players: [
+      'Weverton',
+      'Marcos Rocha',
+      'Gustavo Gómez',
+      'Murilo',
+      'Piquerez',
+      'Aníbal Moreno',
+      'Zé Rafael',
+      'Raphael Veiga',
+      'Felipe Anderson',
+      'Flaco López',
+      'Estêvão',
+    ],
+  },
+  {
+    id: 'flamengo',
+    name: 'Flamengo',
+    short: 'FLA',
+    shirt: '#c01824',
+    shorts: '#111111',
+    trim: '#ffffff',
+    keeper: { shirt: '#ffd700', shorts: '#111111', trim: '#ffffff' },
+    ratings: { att: 88, mid: 87, def: 84 },
+    players: [
+      'Rossi',
+      'Varela',
+      'Léo Ortiz',
+      'Léo Pereira',
+      'Ayrton Lucas',
+      'Pulgar',
+      'De La Cruz',
+      'Arrascaeta',
+      'Gerson',
+      'Bruno Henrique',
+      'Pedro',
+    ],
+  },
+  {
+    id: 'saopaulo',
+    name: 'São Paulo',
+    short: 'SAO',
+    shirt: '#ffffff',
+    shorts: '#111111',
+    trim: '#c01824',
+    keeper: { shirt: '#ff6f00', shorts: '#111111', trim: '#ffffff' },
+    ratings: { att: 83, mid: 84, def: 82 },
+    players: [
+      'Rafael',
+      'Rafinha',
+      'Arboleda',
+      'Alan Franco',
+      'Welington',
+      'Pablo Maia',
+      'Alisson',
+      'Lucas Moura',
+      'Luciano',
+      'Wellington Rato',
+      'Calleri',
+    ],
+  },
+  {
+    id: 'santos',
+    name: 'Santos',
+    short: 'SAN',
+    shirt: '#f0f0f0',
+    shorts: '#f0f0f0',
+    trim: '#111111',
+    keeper: { shirt: '#00bcd4', shorts: '#111111', trim: '#ffffff' },
+    ratings: { att: 81, mid: 81, def: 80 },
+    players: [
+      'Brazão',
+      'Aderlan',
+      'Gil',
+      'Joaquim',
+      'Escobar',
+      'João Schmidt',
+      'Diego Pituca',
+      'Giuliano',
+      'Otero',
+      'Guilherme',
+      'Furch',
+    ],
+  },
+  {
+    id: 'brasil',
+    name: 'Brasil',
+    short: 'BRA',
+    shirt: '#fed100',
+    shorts: '#002776',
+    trim: '#009b3a',
+    keeper: { shirt: '#111111', shorts: '#111111', trim: '#009b3a' },
+    ratings: { att: 91, mid: 88, def: 89 },
+    players: [
+      'Alisson',
+      'Danilo',
+      'Marquinhos',
+      'Gabriel M.',
+      'Arana',
+      'Bruno G.',
+      'Paquetá',
+      'Rodrygo',
+      'Raphinha',
+      'Vinícius Jr',
+      'Endrick',
+    ],
+  },
+  {
+    id: 'realmadrid',
+    name: 'Real Madrid',
+    short: 'RMA',
+    shirt: '#fcfcfc',
+    shorts: '#fcfcfc',
+    trim: '#d4af37',
+    keeper: { shirt: '#39ff14', shorts: '#111111', trim: '#ffffff' },
+    ratings: { att: 93, mid: 91, def: 90 },
+    players: [
+      'Courtois',
+      'Carvajal',
+      'Militão',
+      'Rüdiger',
+      'Mendy',
+      'Valverde',
+      'Camavinga',
+      'Bellingham',
+      'Rodrygo',
+      'Mbappé',
+      'Vinícius Jr',
+    ],
+  },
+  {
+    id: 'barcelona',
+    name: 'Barcelona',
+    short: 'BAR',
+    shirt: '#004d98',
+    shorts: '#a50044',
+    trim: '#edbb00',
+    keeper: { shirt: '#00e5ff', shorts: '#111111', trim: '#ffffff' },
+    ratings: { att: 90, mid: 89, def: 87 },
+    players: [
+      'Ter Stegen',
+      'Koundé',
+      'Araújo',
+      'Cubarsí',
+      'Balde',
+      'Pedri',
+      'De Jong',
+      'Dani Olmo',
+      'Lamine Yamal',
+      'Lewandowski',
+      'Raphinha',
+    ],
+  },
+];
+
+export const TEAM_PRESETS = [
+  {
+    id: 'corinthians',
+    name: 'Corinthians',
+    short: 'COR',
+    shirt: '#f5f5f5',
+    shorts: '#111111',
+    trim: '#111111',
+    skin: '#e8b98a',
+    hair: '#3a2415',
+    ratings: { att: 85, mid: 84, def: 83 },
+    players: ALL_TEAMS[0].players,
+  },
+  {
+    id: 'palmeiras',
+    name: 'Palmeiras',
+    short: 'PAL',
+    shirt: '#006437',
+    shorts: '#f5f5f5',
+    trim: '#ffffff',
+    skin: '#8d5524',
+    hair: '#221109',
+    ratings: { att: 86, mid: 85, def: 85 },
+    players: ALL_TEAMS[1].players,
+  },
+];
+
+export const KEEPER_KIT = [
+  { shirt: '#ffd700', shorts: '#111111', trim: '#111111', skin: '#e8b98a', hair: '#3a2415' },
+  { shirt: '#00e5ff', shorts: '#111111', trim: '#ffffff', skin: '#8d5524', hair: '#221109' },
+];
+
+export function applyTeam(slot, teamOrId) {
+  const team = typeof teamOrId === 'string'
+    ? ALL_TEAMS.find((t) => t.id === teamOrId) || ALL_TEAMS[slot % ALL_TEAMS.length]
+    : teamOrId;
+  if (!team) return;
+  TEAM_PRESETS[slot] = {
+    id: team.id,
+    name: team.name,
+    short: team.short,
+    shirt: team.shirt,
+    shorts: team.shorts,
+    trim: team.trim,
+    skin: slot === 0 ? '#e8b98a' : '#8d5524',
+    hair: slot === 0 ? '#3a2415' : '#221109',
+    ratings: team.ratings,
+    players: [...team.players],
+  };
+  KEEPER_KIT[slot] = {
+    shirt: team.keeper.shirt,
+    shorts: team.keeper.shorts,
+    trim: team.keeper.trim,
+    skin: slot === 0 ? '#e8b98a' : '#8d5524',
+    hair: slot === 0 ? '#3a2415' : '#221109',
+  };
+}
+
+// The skin in a kit above is only the fallback. A squad is eleven different
+// people: giving every player in a team the same tone made the blue side look
+// uniformly light and the red side uniformly dark, which is not what a team
+// looks like. Hair travels with the skin, since the pairing is what reads as a
+// person rather than a recoloured copy.
+//
+// The darkest tone is not as dark as it could be, on purpose: the face is three
+// pixels tall from above and sits directly under the hair, so at the bottom of
+// the range the head turned into one dark blob and the player stopped having a
+// face at all. Every pair here keeps the hair clearly darker than the skin.
+export const SKIN_TONES = [
+  { skin: '#f2d0ab', hair: '#8a5a2b' },
+  { skin: '#e8b98a', hair: '#3a2415' },
+  { skin: '#c68642', hair: '#2a1a10' },
+  { skin: '#a3663a', hair: '#1d1109' },
+  { skin: '#8d5524', hair: '#221109' },
+  { skin: '#6f4420', hair: '#1a0e06' },
+];
+
+/**
+ * The kit one player wears, tone and all.
+ *
+ * The tone is picked by a stride through the palette rather than at random: the
+ * simulation must not be touched for something this cosmetic, and a player has
+ * to keep the same face from one frame to the next. Five and six share no
+ * factors, so eleven players walk the whole palette instead of landing on three
+ * of it, and the teams start at different points so the two sides are not the
+ * same eleven faces twice.
+ *
+ * `id` is the sprite cache key: players sharing a kit and a tone share sprites,
+ * so this costs a dozen little canvases, not twenty-two sets of them.
+ */
+export function kitFor(teamIdx, playerIdx) {
+  const base = playerIdx === 0 ? KEEPER_KIT[teamIdx] : TEAM_PRESETS[teamIdx];
+  const toneIdx = (playerIdx * 5 + teamIdx * 3) % SKIN_TONES.length;
+  const tone = SKIN_TONES[toneIdx];
+  return {
+    ...base,
+    skin: tone.skin,
+    hair: tone.hair,
+    id: `${teamIdx}${playerIdx === 0 ? 'gk' : ''}-${toneIdx}`,
+  };
+}
+
+// Line-ups live in game/formations.js: they are a choice now, not a constant.
